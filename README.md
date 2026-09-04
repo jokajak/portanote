@@ -94,7 +94,7 @@ curl -fsSL https://raw.githubusercontent.com/jake-kelley/portanote/main/scripts/
 ## Everyday use
 
 - **Markdown help** lives behind the `❔` toolbar button — a full cheat sheet, including `[[Note Title]]` wiki-links, task-list checkboxes, tables, and ` ```mermaid ` diagrams.
-- **Folders** are `/`-separated paths (`Work/Runbooks/AWS`). `+` creates (use `/` to nest); hover a folder for rename (✎), add-subfolder (＋), and delete (✕); drag notes onto folders to move them. Deleting a folder never deletes notes — they become uncategorized.
+- **Folders** are `/`-separated paths (`Work/Runbooks/AWS`). `+` creates (use `/` to nest); hover a folder for rename (✎), add-subfolder (＋), and delete (✕); drag notes onto folders to move them, and drag a folder onto another to nest it (drop it on **Notes** to bring it back out to the top level). Deleting a folder never deletes notes — they become uncategorized.
 - **Sync with disk (⟳):** reorganize notes with Finder, Explorer, git, whatever — then click `⟳` in the sidebar and Portanote re-indexes everything.
 - **Tags:** add them under the note title; a ✨ row suggests tags from the note's own headings, computed locally. ([AI suggestions](docs/ask-claude.md) are opt-in.)
 - **Search scoping:** with a folder selected, search covers that folder and its subfolders; a bar under the box flips the query to all notes.

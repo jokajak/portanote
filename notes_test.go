@@ -555,3 +555,62 @@ func TestDuplicateBasenamesAcrossFolders(t *testing.T) {
 		t.Fatalf("got %d notes, want 2", s.Count())
 	}
 }
+
+// Dragging a folder onto another one is a reparent, which is the same
+// RenameFolder call with the leaf name kept. The subtree, its notes, and the
+// files on disk all have to come along.
+func TestMoveFolderReparentsSubtree(t *testing.T) {
+	s, dir := newTestStore(t)
+	n, _ := s.Create("Buried")
+	mustUpdate(t, s, n.ID, UpdateReq{Folder: strp("Alpha/Deep")})
+	s.CreateFolder("Beta")
+
+	// Alpha -> Beta/Alpha
+	if err := s.RenameFolder("Alpha", "Beta/Alpha"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Beta", "Alpha", "Deep")); err != nil {
+		t.Errorf("nested subtree missing after move: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Alpha")); !os.IsNotExist(err) {
+		t.Error("source dir still present after move")
+	}
+	if got, _ := s.Get(n.ID); got.Folder != "Beta/Alpha/Deep" {
+		t.Errorf("note folder = %q, want Beta/Alpha/Deep", got.Folder)
+	}
+
+	// the descendant path is remapped in the folder list too, or the sidebar
+	// would keep rendering a folder that no longer exists
+	var haveDeep, haveStale bool
+	for _, f := range s.Folders() {
+		switch f.Name {
+		case "Beta/Alpha/Deep":
+			haveDeep = true
+		case "Alpha", "Alpha/Deep":
+			haveStale = true
+		}
+	}
+	if !haveDeep {
+		t.Error("Beta/Alpha/Deep missing from the folder list")
+	}
+	if haveStale {
+		t.Error("stale Alpha path left in the folder list")
+	}
+
+	// dropping a folder into its own subtree is refused
+	if err := s.RenameFolder("Beta", "Beta/Alpha/Beta"); err == nil {
+		t.Error("moving a folder inside itself should fail")
+	}
+
+	// and back out to the top level
+	if err := s.RenameFolder("Beta/Alpha", "Alpha"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(n.ID); got.Folder != "Alpha/Deep" {
+		t.Errorf("note folder = %q, want Alpha/Deep after moving out", got.Folder)
+	}
+	upd := mustUpdate(t, s, n.ID, UpdateReq{Body: strp("still writable")})
+	if _, err := os.Stat(filepath.Join(dir, "Alpha", "Deep", path.Base(upd.file)+".md")); err != nil {
+		t.Errorf("note file not writable at its new location: %v", err)
+	}
+}

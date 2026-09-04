@@ -19,6 +19,7 @@ const state = {
   selected: new Set(),  // multi-selected note ids
   lastClicked: null,
   dragging: null,
+  folderDrag: null,     // folder path being dragged onto another folder
   q: "",
   results: null,        // search results when q is non-empty
   searchGlobal: false,  // an active folder scopes the search; this widens it back to all notes
@@ -393,7 +394,7 @@ function renderSidebar() {
       const toggle = r.hasKids
         ? `<span class="ftoggle" data-toggle="${esc(r.path)}">${r.collapsed ? "▸" : "▾"}</span>`
         : `<span class="ftoggle empty"></span>`;
-      return `<a data-folder="${esc(r.path)}" class="frow ${state.folder === r.path ? "active" : ""}" style="padding-left:${8 + r.depth * 14}px">
+      return `<a draggable="true" data-folder="${esc(r.path)}" class="frow ${state.folder === r.path ? "active" : ""}" style="padding-left:${8 + r.depth * 14}px">
         ${toggle}<span class="ficon">📁</span><span class="fname">${esc(r.name)}</span>
         <span class="count">${r.count || ""}</span>
         <span class="fren" data-ren="${esc(r.path)}" title="Rename folder">✎</span>
@@ -858,6 +859,31 @@ function bindDropTarget(container, selector, onDrop) {
     const ids = state.dragging;
     state.dragging = null;
     onDrop(t, ids);
+  });
+}
+
+// same shape as bindDropTarget but for a dragged folder row. canDrop decides
+// whether this target is legal at all, so an illegal one never lights up —
+// dropping a folder into its own subtree has no sensible meaning.
+function bindFolderDrop(container, selector, canDrop, onDrop) {
+  container.addEventListener("dragover", (e) => {
+    const t = e.target.closest(selector);
+    if (!t || !state.folderDrag || !canDrop(t)) return;
+    e.preventDefault();
+    t.classList.add("drop-hover");
+  });
+  container.addEventListener("dragleave", (e) => {
+    const t = e.target.closest(selector);
+    if (t) t.classList.remove("drop-hover");
+  });
+  container.addEventListener("drop", (e) => {
+    const t = e.target.closest(selector);
+    if (!t || !state.folderDrag || !canDrop(t)) return;
+    e.preventDefault();
+    t.classList.remove("drop-hover");
+    const from = state.folderDrag;
+    state.folderDrag = null;
+    onDrop(t, from);
   });
 }
 
@@ -2164,6 +2190,25 @@ function bindEvents() {
   });
   bindDropTarget($("#folderlist"), "a[data-folder]", (a, ids) => moveNotes(ids, a.dataset.folder));
   bindDropTarget($("#views"), 'a[data-view="trash"]', (_, ids) => bulkApplyTo(ids, { trashed: true }));
+  // drag a folder -> drop onto another folder to nest it, or onto Notes to
+  // bring it back out to the top level
+  $("#folderlist").addEventListener("dragstart", (e) => {
+    const row = e.target.closest("a[data-folder]");
+    if (!row) return;
+    state.folderDrag = row.dataset.folder;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", state.folderDrag);
+  });
+  $("#folderlist").addEventListener("dragend", () => {
+    state.folderDrag = null;
+    $$(".drop-hover").forEach((el) => el.classList.remove("drop-hover"));
+  });
+  bindFolderDrop($("#folderlist"), "a[data-folder]",
+    (t) => !underFolderPath(t.dataset.folder, state.folderDrag),
+    (t, from) => moveFolder(from, t.dataset.folder));
+  bindFolderDrop($("#views"), 'a[data-view="all"]',
+    () => state.folderDrag.includes("/"),   // already top-level: nothing to do
+    (_, from) => moveFolder(from, ""));
   // wiki-link navigation + backlink items
   $("#preview").addEventListener("click", (e) => {
     const w = e.target.closest(".wikilink");
@@ -2487,21 +2532,61 @@ function remapFolder(f, from, to) {
   return f;
 }
 
+// is p the folder itself, or somewhere inside it?
+function underFolderPath(p, folder) {
+  return !!p && (p === folder || p.startsWith(folder + "/"));
+}
+
+/* Rename and move are the same server operation — a folder's path is its
+   parent plus its name, and changing either is one POST. This does the call
+   and then drags every in-memory path along behind it. Returns "" on success
+   or the server's message, which is worth showing: the backend is the only
+   thing that knows about name collisions on disk. */
+async function applyFolderMove(from, to) {
+  if (!to || to === from) return "";
+  const r = await fetch("/api/folders/rename", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to }),
+  });
+  if (!r.ok) {
+    const msg = await r.json().then((j) => j.error).catch(() => "");
+    return msg || "Could not move that folder.";
+  }
+  await refreshFolders();
+  for (const n of state.notes) n.folder = remapFolder(n.folder, from, to);
+  if (state.current) state.current.folder = remapFolder(state.current.folder, from, to);
+  if (state.folder) state.folder = remapFolder(state.folder, from, to);
+  // collapsed rows are keyed by path too, so without this the moved subtree
+  // springs open the moment it lands
+  state.collapsed = new Set([...state.collapsed].map((p) => remapFolder(p, from, to)));
+  saveCollapsed();
+  renderAll();
+  return "";
+}
+
 async function renameFolder(path) {
   const leaf = path.split("/").pop();
   const to = (prompt("Rename folder:", leaf) || "").trim();
   if (!to || to === leaf) return;
   const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-  const newPath = parent ? parent + "/" + to : to;
-  await fetch("/api/folders/rename", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from: path, to: newPath }),
-  });
-  await refreshFolders();
-  for (const n of state.notes) n.folder = remapFolder(n.folder, path, newPath);
-  if (state.current) state.current.folder = remapFolder(state.current.folder, path, newPath);
-  if (state.folder) state.folder = remapFolder(state.folder, path, newPath);
-  renderAll();
+  const err = await applyFolderMove(path, parent ? parent + "/" + to : to);
+  if (err) toast(err, "error");
+}
+
+// Drop a folder onto another one to nest it, or onto Notes to bring it back to
+// the top level. The folder keeps its own name — only its parent changes.
+async function moveFolder(from, parent) {
+  if (!from) return;
+  const leaf = from.split("/").pop();
+  const to = parent ? parent + "/" + leaf : leaf;
+  if (to === from) return;                       // already there; dropping is a no-op
+  if (underFolderPath(parent, from)) {
+    toast("A folder can't be moved inside itself.", "error");
+    return;
+  }
+  const err = await applyFolderMove(from, to);
+  if (err) toast(err, "error");
+  else toast(`Moved “${leaf}” to ${parent || "the top level"}`);
 }
 
 async function deleteFolder(path) {
