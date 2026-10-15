@@ -3,9 +3,13 @@
 
 (() => {
   const STORAGE_KEY = "pn-vim-enabled";
+  const APP_SHORTCUTS = new Set(["k", "s", "e"]);
+  const NATIVE_CTRL_KEYS = new Set(["a", "c", "v", "x", "y", "z"]);
   let vim = null;
   let enabled = localStorage.getItem(STORAGE_KEY) === "1";
   let dispatchingChange = false;
+  let composing = false;
+  let noteKey = null;
 
   const editor = () => document.querySelector("#mdtext");
   const badge = () => document.querySelector("#vimMode");
@@ -50,22 +54,52 @@
       },
       onModeChange: renderMode,
       onSave: () => window.saveNow?.(),
-      onYank: (text) => {
-        // Mirror Vim yanks to the system clipboard when browser permissions
-        // allow it; Vimee's own register still works if this is unavailable.
-        navigator.clipboard?.writeText(text).catch(() => {});
-      },
     });
     renderMode(vim.getMode());
   }
 
-  function sync() {
-    // Portanote replaces textarea.value when a different note is opened.
-    // Vimee owns an internal TextBuffer, so rebuilding the attachment is the
-    // supported way to seed it with the new note's content and cursor.
+  function restoreMode(mode) {
+    const ta = editor();
+    if (!vim || !ta || mode === "normal") return;
+    const key = ({
+      insert: "i",
+      visual: "v",
+      "visual-line": "V",
+      "command-line": ":",
+    })[mode];
+    if (key) ta.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  }
+
+  function rebuild({ preserveMode = false } = {}) {
     if (!enabled) return;
+    const ta = editor();
+    if (!ta) return;
+    const previousMode = preserveMode ? vim?.getMode() : "normal";
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
     detach();
+    ta.setSelectionRange(start, end);
     attach();
+    restoreMode(previousMode);
+  }
+
+  function sync(nextNoteKey) {
+    if (!enabled) {
+      if (nextNoteKey !== undefined) noteKey = nextNoteKey;
+      return;
+    }
+    const ta = editor();
+    if (!ta) return;
+
+    const noteChanged = nextNoteKey !== undefined && nextNoteKey !== noteKey;
+    if (nextNoteKey !== undefined) noteKey = nextNoteKey;
+    const contentChanged = !vim || vim.getContent() !== ta.value;
+    if (!noteChanged && !contentChanged) return;
+
+    // A different note should begin in NORMAL mode. A background refresh of
+    // the same note keeps the user's mode/cursor, but Vimee's undo/register
+    // state necessarily resets because its textarea adapter has no reseed API.
+    rebuild({ preserveMode: !noteChanged });
   }
 
   function setEnabled(on) {
@@ -79,6 +113,41 @@
 
   function isEnabled() {
     return enabled;
+  }
+
+  function isAppShortcut(e) {
+    const mod = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
+    return mod && ((e.altKey && key === "n") || (!e.altKey && APP_SHORTCUTS.has(key)));
+  }
+
+  function bypassVimeeKeydown(e) {
+    if (!enabled) return;
+    const key = e.key.toLowerCase();
+
+    // Vimee 0.1.2 consumes modified keys too aggressively and ignores Meta.
+    // Keep Vim's Ctrl motions, but bypass Vimee for Portanote shortcuts and
+    // native browser/OS shortcuts. Portanote shortcuts are re-dispatched on
+    // document so its existing global handler still owns their behavior.
+    if (isAppShortcut(e)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      document.dispatchEvent(new KeyboardEvent("keydown", {
+        key: e.key,
+        code: e.code,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        altKey: e.altKey,
+        shiftKey: e.shiftKey,
+        bubbles: true,
+        cancelable: true,
+      }));
+      return;
+    }
+
+    if (e.metaKey || e.altKey || (e.ctrlKey && NATIVE_CTRL_KEYS.has(key))) {
+      e.stopImmediatePropagation();
+    }
   }
 
   window.portanoteVim = {
@@ -95,14 +164,24 @@
       cb.checked = enabled;
       cb.addEventListener("change", () => setEnabled(cb.checked));
     }
+
+    const ta = editor();
+    // Capture runs before Vimee's textarea keydown listener.
+    ta?.addEventListener("keydown", bypassVimeeKeydown, true);
+    ta?.addEventListener("compositionstart", () => { composing = true; });
+    ta?.addEventListener("compositionend", () => {
+      composing = false;
+      if (enabled && vim && vim.getContent() !== ta.value) rebuild({ preserveMode: true });
+    });
+
     attach();
 
-    // Toolbar operations can change textarea.value without switching notes.
-    // They normally emit input; if that change did not originate in Vimee,
-    // rebuild Vimee's buffer so the next motion sees the current text.
-    editor()?.addEventListener("input", () => {
-      if (!enabled || dispatchingChange || !vim) return;
-      if (vim.getContent() !== editor().value) sync();
+    // Programmatic editor helpers dispatch input just like user edits. If the
+    // change did not originate in Vimee, rebuild its internal TextBuffer while
+    // keeping the current mode and cursor.
+    ta?.addEventListener("input", () => {
+      if (!enabled || dispatchingChange || composing || !vim) return;
+      if (vim.getContent() !== ta.value) rebuild({ preserveMode: true });
     });
   });
 })();
