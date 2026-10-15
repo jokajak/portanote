@@ -6,6 +6,8 @@ on:
     paths:
       - scripts/vimee-entry.js
       - scripts/apply-vim-mode.mjs
+      - scripts/vim-smoke.mjs
+      - vim_ui_test.go
       - .github/workflows/vendor-vimee.yml
   pull_request:
     branches: [main]
@@ -23,12 +25,19 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
       - name: Build pinned browser bundle
         run: |
           npm install --no-save --ignore-scripts @vimee/core@0.3.0 @vimee/plugin-textarea@0.1.2 esbuild@0.25.11
           npx esbuild scripts/vimee-entry.js --bundle --minify --format=iife --global-name=VimeeTextarea --outfile=ui/vendor/vimee-textarea-0.1.2.min.js
       - name: Apply Portanote integration
         run: node scripts/apply-vim-mode.mjs
+      - name: Test Vim engine and Portanote integration
+        run: |
+          node scripts/vim-smoke.mjs
+          go test ./...
       - name: Commit generated integration
         run: |
           git config user.name github-actions[bot]
@@ -36,4 +45,5 @@ jobs:
           git add ui/app.js ui/app.css ui/index.html ui/vendor/vimee-textarea-0.1.2.min.js
           git diff --cached --quiet && exit 0
           git commit -m "feat: integrate optional Vim mode"
+          git pull --rebase origin feature/vim-mode
           git push
