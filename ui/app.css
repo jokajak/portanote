@@ -441,3 +441,17 @@ body.dark .cl-error{background:#3a1d1f;color:#e8b4b6;}
 #importNewFolderInput{margin-top:6px;}
 #importFolderSel:focus,#importNewFolderInput:focus{outline:none;border-color:var(--accent);}
 #mdtext:disabled,#title:disabled{opacity:.6;}
+
+
+/* Vim mode -------------------------------------------------------------- */
+.vim-mode {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font: 600 10px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .04em;
+  background: var(--accent, #2563eb);
+  color: #fff;
+}
+.vim-mode[data-mode="insert"] { opacity: .78; }
+.vim-mode[data-mode^="visual"] { outline: 1px solid currentColor; outline-offset: -2px; }

@@ -466,6 +466,7 @@ function renderEditor() {
   $("#trashBanner").hidden = !n.trashed;
   $("#title").value = n.title;
   $("#mdtext").value = n.body;
+  window.portanoteVim?.sync(n.id);
   renderFolderSelect();
   renderTagChips();
   $("#starBtn").textContent = n.starred ? "★" : "☆";
@@ -1344,7 +1345,7 @@ function mdWrap(before, after = before, placeholder = "") {
   ta.setRangeText(before + sel + after, s, e, "select");
   ta.setSelectionRange(s + before.length, s + before.length + sel.length);
   ta.focus();
-  onBodyInput();
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function mdLinePrefix(prefix) {
@@ -1358,7 +1359,7 @@ function mdLinePrefix(prefix) {
   const out = lines.map((l) => (allHave ? l.slice(prefix.length) : prefix + l)).join("\n");
   ta.setRangeText(out, ls, le, "end");
   ta.focus();
-  onBodyInput();
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /* Indent (dir 1) or unindent (dir -1) every line the selection touches.
@@ -1374,7 +1375,7 @@ function mdIndent(dir) {
   if (s === e && dir > 0) {
     ta.setRangeText(unit, s, e, "end");
     ta.focus();
-    onBodyInput();
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
     return;
   }
 
@@ -1395,14 +1396,14 @@ function mdIndent(dir) {
     ta.setSelectionRange(ls, ls + out.length);
   }
   ta.focus();
-  onBodyInput();
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function mdInsertBlock(text) {
   const ta = $("#mdtext");
   ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, "end");
   ta.focus();
-  onBodyInput();
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 // paste an image from the clipboard -> upload -> insert markdown at the cursor
@@ -2267,6 +2268,7 @@ function bindEvents() {
   $("#mdtext").addEventListener("input", onBodyInput);
   $("#mdtext").addEventListener("paste", onPasteImage);
   $("#mdtext").addEventListener("keydown", (e) => {
+    if (window.portanoteVim?.enabled()) return;
     if (e.key === "Tab") {
       e.preventDefault();
       mdIndent(e.shiftKey ? -1 : 1);

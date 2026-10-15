@@ -16,6 +16,8 @@
 <script defer src="vendor/hljs-nginx.min.js"></script>
 <script defer src="vendor/hljs-spl.js"></script>
 <script defer src="vendor/mermaid.min.js"></script>
+<script defer src="vendor/vimee-textarea-0.1.2.min.js"></script>
+<script defer src="vim-mode.js"></script>
 <script defer src="app.js"></script>
 </head>
 <body>
@@ -185,6 +187,7 @@
       </div>
 
       <footer id="statusbar">
+        <span id="vimMode" class="vim-mode" hidden></span>
         <span id="stats"></span>
         <span id="noteDates"></span>
         <span id="saveState"></span>
@@ -311,6 +314,12 @@
       <button id="settingsClose" title="Close (Esc)">✕</button>
     </header>
     <div class="settings-body">
+      <h3>Editor</h3>
+      <label class="setting-row"><input type="checkbox" id="setVimMode">
+        Enable Vim keybindings in the Markdown editor
+      </label>
+      <p class="settings-desc">Uses Vimee for Normal, Insert, Visual, and command-line editing. This preference is stored in this browser.</p>
+
       <h3>Automatic backups</h3>
       <p class="settings-desc">Zips your whole notes folder into <code>backups/</code> on a schedule (the <code>backups/</code> folder itself is excluded).</p>
       <label class="setting-row">Back up every
