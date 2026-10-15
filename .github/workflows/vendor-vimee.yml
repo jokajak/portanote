@@ -6,6 +6,8 @@ on:
     paths:
       - scripts/vimee-entry.js
       - .github/workflows/vendor-vimee.yml
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
