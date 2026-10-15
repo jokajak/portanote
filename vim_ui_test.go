@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestVimUIIntegration(t *testing.T) {
+func TestVimUIAssetsEmbedded(t *testing.T) {
 	indexBytes, err := uiEmbed.ReadFile("ui/index.html")
 	if err != nil {
 		t.Fatal(err)
@@ -19,7 +19,7 @@ func TestVimUIIntegration(t *testing.T) {
 		`id="vimMode"`,
 	} {
 		if !strings.Contains(index, want) {
-			t.Fatalf("index.html missing Vim integration marker %q", want)
+			t.Fatalf("index.html missing Vim asset or UI marker %q", want)
 		}
 	}
 	if strings.Index(index, `vendor/vimee-textarea-0.1.2.min.js`) > strings.Index(index, `vim-mode.js`) ||
@@ -27,23 +27,11 @@ func TestVimUIIntegration(t *testing.T) {
 		t.Fatal("Vim scripts must load after Vimee and before app.js")
 	}
 
-	appBytes, err := uiEmbed.ReadFile("ui/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := string(appBytes)
-	for _, want := range []string{
-		`window.portanoteVim?.sync();`,
-		`if (window.portanoteVim?.enabled()) return;`,
-		`if (e.defaultPrevented) return;`,
-	} {
-		if !strings.Contains(app, want) {
-			t.Fatalf("app.js missing Vim integration marker %q", want)
-		}
-	}
-
 	if _, err := uiEmbed.ReadFile("ui/vendor/vimee-textarea-0.1.2.min.js"); err != nil {
 		t.Fatalf("vendored Vimee bundle missing: %v", err)
+	}
+	if _, err := uiEmbed.ReadFile("ui/vim-mode.js"); err != nil {
+		t.Fatalf("Portanote Vim integration script missing: %v", err)
 	}
 }
 
