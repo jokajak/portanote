@@ -466,6 +466,7 @@ function renderEditor() {
   $("#trashBanner").hidden = !n.trashed;
   $("#title").value = n.title;
   $("#mdtext").value = n.body;
+  window.portanoteVim?.sync();
   renderFolderSelect();
   renderTagChips();
   $("#starBtn").textContent = n.starred ? "★" : "☆";
@@ -2267,6 +2268,7 @@ function bindEvents() {
   $("#mdtext").addEventListener("input", onBodyInput);
   $("#mdtext").addEventListener("paste", onPasteImage);
   $("#mdtext").addEventListener("keydown", (e) => {
+    if (window.portanoteVim?.enabled()) return;
     if (e.key === "Tab") {
       e.preventDefault();
       mdIndent(e.shiftKey ? -1 : 1);
@@ -2431,6 +2433,7 @@ function bindEvents() {
 
   // global shortcuts
   document.addEventListener("keydown", (e) => {
+    if (e.defaultPrevented) return;
     if (e.key === "Escape" && !$("#cheatOverlay").hidden) { $("#cheatOverlay").hidden = true; return; }
     if (e.key === "Escape" && !$("#settingsOverlay").hidden) { $("#settingsOverlay").hidden = true; return; }
     if (e.key === "Escape" && !$("#shareOverlay").hidden) { $("#shareOverlay").hidden = true; return; }
